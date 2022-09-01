@@ -30,7 +30,7 @@ const getData = async (collection) => {
 }
 
 const userInParticipants = async (name) => {
-    const participants = await getParticipants();
+    const participants = await getData('participants');
     return participants.some(participant => (participant.name === name))
 }
 
@@ -112,16 +112,18 @@ app.post('/messages', async (req, res) => {
 app.get('/messages', async (req, res) => {
     try {
         const { limit: limitStr } = req.query;
+        const { User } = req.headers;
         const messages = await getData('messages');
+        const filteredMessages = messages.filter(message => (message.type === 'message' || message.from === User || message.to === User || message.to === 'Todos'));
 
         if (limitStr) {
             const limit = Number(limitStr);
-            const limitedMessages = messages.slice(-limit);
+            const limitedMessages = filteredMessages.slice(-limit);
             res.send(limitedMessages);
             return;
         }
 
-        res.send(messages);
+        res.send(filteredMessages);
 
     } catch (error) {
         console.error(error);
