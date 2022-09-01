@@ -86,7 +86,7 @@ app.get('/participants', async (req, res) => {
 app.post('/messages', async (req, res) => {
     try {
         const { to, text, type } = req.body;
-        const { User: from } = req.headers;
+        const { user: from } = req.headers;
 
         if (!to || !text || !type || (type !== 'message' && type !== 'private_message') || !userInParticipants(from)) {
             res.status(422).send({ message: 'Não foi possível enviar a mensagem.' });
@@ -124,6 +124,32 @@ app.get('/messages', async (req, res) => {
         }
 
         res.send(filteredMessages);
+
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
+app.post('/status', async (req, res) => {
+    try {
+        const { user } = req.headers;
+        const userSigned = await userInParticipants(user);
+
+        if (!userSigned) {
+            res.sendStatus(404);
+            return;
+        }
+
+        const document = { name: user };
+        const newDocument = { $set: { lastStatus: Date.now() } }
+
+        await db.collection('participants').updateOne(document, newDocument, function(err, res) {
+            if (err) throw err;
+            console.log("1 document updated");
+        });
+
+        res.send('ok');
 
     } catch (error) {
         console.error(error);
