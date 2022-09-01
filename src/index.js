@@ -109,6 +109,26 @@ app.post('/messages', async (req, res) => {
     }
 });
 
+app.get('/messages', async (req, res) => {
+    try {
+        const { limit: limitStr } = req.query;
+        const messages = await getData('messages');
+
+        if (limitStr) {
+            const limit = Number(limitStr);
+            const limitedMessages = messages.slice(-limit);
+            res.send(limitedMessages);
+            return;
+        }
+
+        res.send(messages);
+
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
 app.listen(5000, () => {
     console.log('Listening on port 5000');
 });
