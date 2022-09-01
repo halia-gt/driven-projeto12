@@ -24,12 +24,12 @@ let db;
     }
 })();
 
-const getParticipants = async () => {
-    const participants = await db.collection('participants').find().toArray();
-    return participants;
+const getData = async (collection) => {
+    const data = await db.collection(collection).find().toArray();
+    return data;
 }
 
-const duplicatedUsername = async (name) => {
+const userInParticipants = async (name) => {
     const participants = await getParticipants();
     return participants.some(participant => (participant.name === name))
 }
@@ -39,14 +39,14 @@ app.post('/participants', async (req, res) => {
         const { name } = req.body;
 
         if (!name) {
-            res.status(422).send({ message: 'Todos os campos são obrigatórios' });
+            res.status(422).send({ message: 'Todos os campos são obrigatórios.' });
             return; //AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH JOI
         }
 
-        const participants = await getParticipants();
+        const participants = await getData('participants');
 
-        if (await duplicatedUsername(name)) {
-            res.status(409).send({ message: 'Usuário inválido' });
+        if (await userInParticipants(name)) {
+            res.status(409).send({ message: 'Usuário já cadastrado.' });
             return;
         }
 
@@ -73,7 +73,7 @@ app.post('/participants', async (req, res) => {
 
 app.get('/participants', async (req, res) => {
     try {
-        const participants = await getParticipants();
+        const participants = await getData('participants');
         res.send(participants);
         
     } catch (error) {
@@ -81,6 +81,32 @@ app.get('/participants', async (req, res) => {
         res.sendStatus(500);
     }
     
+});
+
+app.post('/messages', async (req, res) => {
+    try {
+        const { to, text, type } = req.body;
+        const { User: from } = req.headers;
+
+        if (!to || !text || !type || (type !== 'message' && type !== 'private_message') || !userInParticipants(from)) {
+            res.status(422).send({ message: 'Não foi possível enviar a mensagem.' });
+            return;
+        }
+
+        await db.collection('messages').insertOne({
+            from,
+            to,
+            text,
+            type,
+            time: dayjs().format('HH:mm:ss')
+        });
+
+        res.sendStatus(201);
+
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
 });
 
 app.listen(5000, () => {
