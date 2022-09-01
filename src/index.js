@@ -12,3 +12,9 @@ app.use(express.json());
 
 const uri = process.env.MONGO_URI;
 const client = new MongoClient(uri);
+let db;
+
+async () => {
+    await client.connect();
+    db = client.db('batepapo-uol');
+}
