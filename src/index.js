@@ -173,6 +173,36 @@ app.get('/messages', async (req, res) => {
     }
 });
 
+app.delete('/messages/:messageId', async (req, res) => {
+    const { messageId: unMessageId } = req.params;
+    const { user: unUser } = req.headers;
+    const messageId = stripHtml(unMessageId, { trimOnlySpaces: true }).result;
+    const user = stripHtml(unUser, { trimOnlySpaces: true }).result;
+    const query = { _id: new ObjectId(messageId) };
+    console.log(query);
+
+    try {
+        const message = (await db.collection('messages').find(query).toArray())[0];
+
+        if (!message) {
+            res.status(404).send({ message: 'Mensagem não encontrada' });
+            return;
+        }
+
+        if (message.from !== user) {
+            res.status(401).send({ message: 'Sem autorização para deletar' });
+            return;
+        }
+
+        await db.collection('messages').deleteOne(query);
+        res.sendStatus(200);     
+
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
 app.post('/status', async (req, res) => {
     const { user: unUser } = req.headers;
     const user = stripHtml(unUser, { trimOnlySpaces: true }).result;
