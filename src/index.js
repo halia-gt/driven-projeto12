@@ -39,6 +39,7 @@ const messageSchema = joi.object({
         .empty(' ')
         .required(),
     type: joi.valid('message', 'private_message')
+        .required()
 });
 
 const getData = async (collection) => {
@@ -97,7 +98,6 @@ app.get('/participants', async (req, res) => {
         console.error(error);
         res.sendStatus(500);
     }
-    
 });
 
 app.post('/messages', async (req, res) => {
@@ -105,12 +105,15 @@ app.post('/messages', async (req, res) => {
     const { user: from } = req.headers;
     const validation = messageSchema.validate({ to, text, type });
 
-    if (!to || !text || !type || (type !== 'message' && type !== 'private_message') || !(await userInParticipants(from))) {
-        res.status(422).send({ message: 'Não foi possível enviar a mensagem.' });
-        return;
-    }
-
     try {
+        const validTo = (to === 'Todos') || await userInParticipants(to);
+        
+        if (validation.error || !(await userInParticipants(from)) || !validTo) {
+            const error = validation.error ? validation.error.details[0].message : 'Usuário inválido';
+            res.status(422).send({ message: error });
+            return;
+        }
+
         await db.collection('messages').insertOne({
             from,
             to,
@@ -175,36 +178,36 @@ app.post('/status', async (req, res) => {
     }
 });
 
-setInterval(async () => {
-    const tenSecondsAgo = Date.now() - 10000;
-    const query = { lastStatus: { $lt: tenSecondsAgo} };
+// setInterval(async () => {
+//     const tenSecondsAgo = Date.now() - 10000;
+//     const query = { lastStatus: { $lt: tenSecondsAgo} };
     
-    try {
-        const participants = await getData('participants');
-        const logouts = participants.filter(participant => (participant.lastStatus < tenSecondsAgo));
+//     try {
+//         const participants = await getData('participants');
+//         const logouts = participants.filter(participant => (participant.lastStatus < tenSecondsAgo));
     
-        await db.collection('participants').deleteMany(query, (err, res) => {
-            if (err) throw err;
-            console.log(`${res.deletedCount} documents deleted.`);
-        });
+//         await db.collection('participants').deleteMany(query, (err, res) => {
+//             if (err) throw err;
+//             console.log(`${res.deletedCount} documents deleted.`);
+//         });
 
-        logouts.forEach(async (participant) => {
-            await db.collection('messages').insertOne({
-                from: participant.name,
-                to: 'Todos',
-                text: 'sai da sala...',
-                type: 'status',
-                time: dayjs().format('HH:mm:ss')
-            });
-        });
+//         logouts.forEach(async (participant) => {
+//             await db.collection('messages').insertOne({
+//                 from: participant.name,
+//                 to: 'Todos',
+//                 text: 'sai da sala...',
+//                 type: 'status',
+//                 time: dayjs().format('HH:mm:ss')
+//             });
+//         });
 
-    } catch (error) {
-        console.error(error);
-        res.sendStatus(500);
-    }
+//     } catch (error) {
+//         console.error(error);
+//         res.sendStatus(500);
+//     }
 
 
-}, 15000);
+// }, 15000);
 
 app.listen(5000, () => {
     console.log('Listening on port 5000');
