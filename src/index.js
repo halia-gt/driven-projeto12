@@ -158,13 +158,13 @@ app.get('/messages', async (req, res) => {
 
         if (limitStr) {
             const limit = Number(limitStr);
-            const messages = await db.collection('messages').find(query).sort({_id: -1}).limit(limit).toArray();
+            const messages = (await db.collection('messages').find(query).sort({_id: -1}).limit(limit).toArray()).reverse();
 
             res.send(messages);
             return;
         }
 
-        const messages = await getData('messages', query);
+        const messages = (await getData('messages', query)).reverse();
         res.send(messages);
 
     } catch (error) {
