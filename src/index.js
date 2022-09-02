@@ -179,7 +179,6 @@ app.delete('/messages/:messageId', async (req, res) => {
     const messageId = stripHtml(unMessageId, { trimOnlySpaces: true }).result;
     const user = stripHtml(unUser, { trimOnlySpaces: true }).result;
     const query = { _id: new ObjectId(messageId) };
-    console.log(query);
 
     try {
         const message = (await db.collection('messages').find(query).toArray())[0];
@@ -203,6 +202,58 @@ app.delete('/messages/:messageId', async (req, res) => {
     }
 });
 
+app.put('/messages/:messageId', async (req, res) => {
+    const { messageId: unMessageId } = req.params;
+    const { to: unTo, text: unText, type: unType } = req.body;
+    const { user } = req.headers;
+    const messageId = stripHtml(unMessageId, { trimOnlySpaces: true }).result;
+    const to = stripHtml(unTo, { trimOnlySpaces: true }).result;
+    const text = stripHtml(unText, { trimOnlySpaces: true }).result;
+    const type = stripHtml(unType, { trimOnlySpaces: true }).result;
+    const from = stripHtml(user, { trimOnlySpaces: true }).result;
+    const document = { _id: new ObjectId(messageId) };
+    const validation = messageSchema.validate({ to, text, type });
+    const newDocument = { $set: {
+        from,
+        to,
+        text,
+        type,
+        time: dayjs().format('HH:mm:ss')
+    }};
+
+    try {
+        const validTo = (to === 'Todos') || await userInParticipants(to);
+        const message = (await db.collection('messages').find(document).toArray())[0];
+
+        if (validation.error || !(await userInParticipants(from)) || !validTo) {
+            const error = validation.error ? validation.error.details[0].message : 'Usuário inválido';
+            res.status(422).send({ message: error });
+            return;
+        }
+
+        if (!message) {
+            res.status(404).send({ message: 'Mensagem não encontrada' });
+            return;
+        }
+
+        if (message.from !== from) {
+            res.status(401).send({ message: 'Sem autorização para modificar' });
+            return;
+        }
+
+        await db.collection('messages').updateOne(document, newDocument, (err, res) => {
+            if (err) throw err;
+            console.log(`${res.matchedCount} document updated.`);
+        });
+
+        res.sendStatus(200);     
+
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+});
+
 app.post('/status', async (req, res) => {
     const { user: unUser } = req.headers;
     const user = stripHtml(unUser, { trimOnlySpaces: true }).result;
@@ -214,7 +265,7 @@ app.post('/status', async (req, res) => {
         }
 
         const document = { name: user };
-        const newDocument = { $set: { lastStatus: Date.now() } }
+        const newDocument = { $set: { lastStatus: Date.now() } };
 
         await db.collection('participants').updateOne(document, newDocument, (err, res) => {
             if (err) throw err;
