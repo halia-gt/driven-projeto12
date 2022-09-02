@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import Joi from 'joi';
+import joi from 'joi';
 import { MongoClient } from 'mongodb';
 import dayjs from 'dayjs';
 
@@ -24,6 +24,12 @@ let db;
     }
 })();
 
+const userSchema = joi.object({
+    name: joi.string()
+        .empty(" ")
+        .required()
+});
+
 const getData = async (collection) => {
     const data = await db.collection(collection).find().toArray();
     return data;
@@ -35,33 +41,33 @@ const userInParticipants = async (name) => {
 }
 
 app.post('/participants', async (req, res) => {
-    try {
         const { name } = req.body;
+        const validation = userSchema.validate({ name }, { abortEarly: false });
 
-        if (!name) {
-            res.status(422).send({ message: 'Todos os campos são obrigatórios.' });
-            return; //AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH JOI
+        if (validation.error) {
+            const error = validation.error.details.map(error => error.message);
+            res.status(422).send(error);
         }
-
-        const participants = await getData('participants');
 
         if (await userInParticipants(name)) {
             res.status(409).send({ message: 'Usuário já cadastrado.' });
             return;
         }
+    
+    try {
 
-        await db.collection('participants').insertOne({
-            name,
-            lastStatus: Date.now()
-        });
+        // await db.collection('participants').insertOne({
+        //     name,
+        //     lastStatus: Date.now()
+        // });
 
-        await db.collection('messages').insertOne({
-            from: name,
-            to: 'Todos',
-            text: 'entra na sala...',
-            type: 'status',
-            time: dayjs().format('HH:mm:ss')
-        });
+        // await db.collection('messages').insertOne({
+        //     from: name,
+        //     to: 'Todos',
+        //     text: 'entra na sala...',
+        //     type: 'status',
+        //     time: dayjs().format('HH:mm:ss')
+        // });
 
         res.sendStatus(201);
 
@@ -144,9 +150,9 @@ app.post('/status', async (req, res) => {
         const document = { name: user };
         const newDocument = { $set: { lastStatus: Date.now() } }
 
-        await db.collection('participants').updateOne(document, newDocument, function(err, res) {
+        await db.collection('participants').updateOne(document, newDocument, (err, res) => {
             if (err) throw err;
-            console.log("1 document updated");
+            console.log(`${res.matchedCount} document updated.`);
         });
 
         res.send('ok');
