@@ -2,8 +2,9 @@ import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import joi from 'joi';
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import dayjs from 'dayjs';
+import { stripHtml } from 'string-strip-html';
 
 dotenv.config();
 
@@ -53,7 +54,9 @@ const userInParticipants = async (name) => {
 }
 
 app.post('/participants', async (req, res) => {
-        const { name } = req.body;
+        const { name: unName } = req.body;
+        const name = stripHtml(unName, { trimOnlySpaces: true }).result;
+
         const validation = userSchema.validate({ name });
 
         if (validation.error) {
@@ -101,8 +104,13 @@ app.get('/participants', async (req, res) => {
 });
 
 app.post('/messages', async (req, res) => {
-    const { to, text, type } = req.body;
-    const { user: from } = req.headers;
+    const { to: unTo, text: unText, type: unType } = req.body;
+    const { user } = req.headers;
+    const to = stripHtml(unTo, { trimOnlySpaces: true }).result;
+    const text = stripHtml(unText, { trimOnlySpaces: true }).result;
+    const type = stripHtml(unType, { trimOnlySpaces: true }).result;
+    const from = stripHtml(user, { trimOnlySpaces: true }).result;
+
     const validation = messageSchema.validate({ to, text, type });
 
     try {
@@ -166,11 +174,11 @@ app.get('/messages', async (req, res) => {
 });
 
 app.post('/status', async (req, res) => {
+    const { user: unUser } = req.headers;
+    const user = stripHtml(unUser, { trimOnlySpaces: true }).result;
+    
     try {
-        const { user } = req.headers;
-        const userSigned = await userInParticipants(user);
-
-        if (!userSigned) {
+        if (!(await userInParticipants(user))) {
             res.sendStatus(404);
             return;
         }
@@ -218,8 +226,6 @@ app.post('/status', async (req, res) => {
 //         console.error(error);
 //         res.sendStatus(500);
 //     }
-
-
 // }, 15000);
 
 app.listen(5000, () => {
