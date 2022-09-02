@@ -26,13 +26,19 @@ let db;
 
 const userSchema = joi.object({
     name: joi.string()
-        .empty(" ")
+        .empty(' ')
         .min(3)
         .required()
 });
 
 const messageSchema = joi.object({
-
+    to: joi.string()
+        .empty(' ')
+        .required(),
+    text: joi.string()
+        .empty(' ')
+        .required(),
+    type: joi.valid('message', 'private_message')
 });
 
 const getData = async (collection) => {
@@ -41,8 +47,8 @@ const getData = async (collection) => {
 }
 
 const userInParticipants = async (name) => {
-    const participants = await getData('participants');
-    return participants.some(participant => (participant.name === name))
+    const participant = await db.collection('participants').find({ name: name }).toArray();
+    return participant[0];
 }
 
 app.post('/participants', async (req, res) => {
@@ -52,6 +58,7 @@ app.post('/participants', async (req, res) => {
         if (validation.error) {
             const error = validation.error.details[0].message;
             res.status(422).send({ message: error });
+            return;
         }
 
         if (await userInParticipants(name)) {
@@ -60,7 +67,6 @@ app.post('/participants', async (req, res) => {
         }
     
     try {
-
         await db.collection('participants').insertOne({
             name,
             lastStatus: Date.now()
@@ -95,15 +101,16 @@ app.get('/participants', async (req, res) => {
 });
 
 app.post('/messages', async (req, res) => {
+    const { to, text, type } = req.body;
+    const { user: from } = req.headers;
+    const validation = messageSchema.validate({ to, text, type });
+
+    if (!to || !text || !type || (type !== 'message' && type !== 'private_message') || !(await userInParticipants(from))) {
+        res.status(422).send({ message: 'Não foi possível enviar a mensagem.' });
+        return;
+    }
+
     try {
-        const { to, text, type } = req.body;
-        const { user: from } = req.headers;
-
-        if (!to || !text || !type || (type !== 'message' && type !== 'private_message') || !userInParticipants(from)) {
-            res.status(422).send({ message: 'Não foi possível enviar a mensagem.' });
-            return;
-        }
-
         await db.collection('messages').insertOne({
             from,
             to,
@@ -160,7 +167,7 @@ app.post('/status', async (req, res) => {
             console.log(`${res.matchedCount} document updated.`);
         });
 
-        res.send('ok');
+        res.sendStatus(200);
 
     } catch (error) {
         console.error(error);
