@@ -163,6 +163,37 @@ app.post('/status', async (req, res) => {
     }
 });
 
+setInterval(async () => {
+    const tenSeconds = Date.now() - 10000;
+    const query = { lastStatus: { $lt: tenSeconds} };
+    
+    try {
+        const participants = await getData('participants');
+        const logouts = participants.filter(participant => (tenSeconds > participant.lastStatus));
+    
+        logouts.forEach(async (participant) => {
+            await db.collection('participants').insertOne({
+                from: participant.name,
+                to: 'Todos',
+                text: 'sai da sala...',
+                type: 'status',
+                time: dayjs().format('HH:mm:ss')
+            });
+        });
+    
+        await db.collection('participants').deleteMany(query, (err, res) => {
+            if (err) throw err;
+            console.log(`${res.deletedCount} documents deleted.`);
+        });
+        
+    } catch (error) {
+        console.error(error);
+        res.sendStatus(500);
+    }
+
+
+}, 15000);
+
 app.listen(5000, () => {
     console.log('Listening on port 5000');
 });
