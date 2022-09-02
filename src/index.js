@@ -27,7 +27,12 @@ let db;
 const userSchema = joi.object({
     name: joi.string()
         .empty(" ")
+        .min(3)
         .required()
+});
+
+const messageSchema = joi.object({
+
 });
 
 const getData = async (collection) => {
@@ -42,11 +47,11 @@ const userInParticipants = async (name) => {
 
 app.post('/participants', async (req, res) => {
         const { name } = req.body;
-        const validation = userSchema.validate({ name }, { abortEarly: false });
+        const validation = userSchema.validate({ name });
 
         if (validation.error) {
-            const error = validation.error.details.map(error => error.message);
-            res.status(422).send(error);
+            const error = validation.error.details[0].message;
+            res.status(422).send({ message: error });
         }
 
         if (await userInParticipants(name)) {
@@ -56,18 +61,18 @@ app.post('/participants', async (req, res) => {
     
     try {
 
-        // await db.collection('participants').insertOne({
-        //     name,
-        //     lastStatus: Date.now()
-        // });
+        await db.collection('participants').insertOne({
+            name,
+            lastStatus: Date.now()
+        });
 
-        // await db.collection('messages').insertOne({
-        //     from: name,
-        //     to: 'Todos',
-        //     text: 'entra na sala...',
-        //     type: 'status',
-        //     time: dayjs().format('HH:mm:ss')
-        // });
+        await db.collection('messages').insertOne({
+            from: name,
+            to: 'Todos',
+            text: 'entra na sala...',
+            type: 'status',
+            time: dayjs().format('HH:mm:ss')
+        });
 
         res.sendStatus(201);
 
@@ -164,15 +169,20 @@ app.post('/status', async (req, res) => {
 });
 
 setInterval(async () => {
-    const tenSeconds = Date.now() - 10000;
-    const query = { lastStatus: { $lt: tenSeconds} };
+    const tenSecondsAgo = Date.now() - 10000;
+    const query = { lastStatus: { $lt: tenSecondsAgo} };
     
     try {
         const participants = await getData('participants');
-        const logouts = participants.filter(participant => (tenSeconds > participant.lastStatus));
+        const logouts = participants.filter(participant => (participant.lastStatus < tenSecondsAgo));
     
+        await db.collection('participants').deleteMany(query, (err, res) => {
+            if (err) throw err;
+            console.log(`${res.deletedCount} documents deleted.`);
+        });
+
         logouts.forEach(async (participant) => {
-            await db.collection('participants').insertOne({
+            await db.collection('messages').insertOne({
                 from: participant.name,
                 to: 'Todos',
                 text: 'sai da sala...',
@@ -180,12 +190,7 @@ setInterval(async () => {
                 time: dayjs().format('HH:mm:ss')
             });
         });
-    
-        await db.collection('participants').deleteMany(query, (err, res) => {
-            if (err) throw err;
-            console.log(`${res.deletedCount} documents deleted.`);
-        });
-        
+
     } catch (error) {
         console.error(error);
         res.sendStatus(500);
