@@ -42,8 +42,8 @@ const messageSchema = joi.object({
         .required()
 });
 
-const getData = async (collection) => {
-    const data = await db.collection(collection).find().toArray();
+const getData = async (collection, query = {}) => {
+    const data = await db.collection(collection).find(query).toArray();
     return data;
 }
 
@@ -107,7 +107,7 @@ app.post('/messages', async (req, res) => {
 
     try {
         const validTo = (to === 'Todos') || await userInParticipants(to);
-        
+
         if (validation.error || !(await userInParticipants(from)) || !validTo) {
             const error = validation.error ? validation.error.details[0].message : 'Usuário inválido';
             res.status(422).send({ message: error });
@@ -131,20 +131,33 @@ app.post('/messages', async (req, res) => {
 });
 
 app.get('/messages', async (req, res) => {
-    try {
-        const { limit: limitStr } = req.query;
-        const { User } = req.headers;
-        const messages = await getData('messages');
-        const filteredMessages = messages.filter(message => (message.type === 'message' || message.from === User || message.to === User || message.to === 'Todos'));
+    const { limit: limitStr } = req.query;
+    const { user } = req.headers;
+    const query = {
+        $or: [
+            {type: 'message'},
+            {from: user},
+            {to: user},
+            {to: 'Todos'}
+        ]
+    };
 
-        if (limitStr) {
-            const limit = Number(limitStr);
-            const limitedMessages = filteredMessages.slice(-limit);
-            res.send(limitedMessages);
+    try {
+        if (!user || !(await userInParticipants(user))) {
+            res.status(400).send({ message: 'Usuário inválido'});
             return;
         }
 
-        res.send(filteredMessages);
+        if (limitStr) {
+            const limit = Number(limitStr);
+            const messages = await db.collection('messages').find(query).sort({_id: -1}).limit(limit).toArray();
+
+            res.send(messages);
+            return;
+        }
+
+        const messages = await getData('messages', query);
+        res.send(messages);
 
     } catch (error) {
         console.error(error);
