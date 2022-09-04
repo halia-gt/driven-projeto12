@@ -49,28 +49,34 @@ const getData = async (collection, query = {}) => {
 }
 
 const userInParticipants = async (name) => {
-    const participant = await db.collection('participants').find({ name: name }).toArray();
-    return participant[0];
+    const participant = await db.collection('participants').findOne({ name: name });
+    return participant;
+}
+
+const sanitize = (string) => {
+    if (!string) return;
+    const sanitized = stripHtml(string, { trimOnlySpaces: true }).result;
+    return sanitized;
 }
 
 app.post('/participants', async (req, res) => {
         const { name: unName } = req.body;
-        const name = stripHtml(unName, { trimOnlySpaces: true }).result;
+        const name = sanitize(unName);
 
-        const validation = userSchema.validate({ name });
+        const validation = userSchema.validate({ name }, { abortEarly: false });
 
         if (validation.error) {
-            const error = validation.error.details[0].message;
-            res.status(422).send({ message: error });
-            return;
-        }
-
-        if (await userInParticipants(name)) {
-            res.status(409).send({ message: 'Usuário já cadastrado.' });
+            const errors = validation.error.details.map(error => error.message);
+            res.status(422).send({ message: errors });
             return;
         }
     
     try {
+        if (await userInParticipants(name)) {
+            res.status(409).send({ message: 'Usuário já cadastrado.' });
+            return;
+        }
+
         await db.collection('participants').insertOne({
             name,
             lastStatus: Date.now()
@@ -106,19 +112,25 @@ app.get('/participants', async (req, res) => {
 app.post('/messages', async (req, res) => {
     const { to: unTo, text: unText, type: unType } = req.body;
     const { user } = req.headers;
-    const to = stripHtml(unTo, { trimOnlySpaces: true }).result;
-    const text = stripHtml(unText, { trimOnlySpaces: true }).result;
-    const type = stripHtml(unType, { trimOnlySpaces: true }).result;
-    const from = stripHtml(user, { trimOnlySpaces: true }).result;
+    const to = sanitize(unTo);
+    const text = sanitize(unText);
+    const type = sanitize(unType);
+    const from = sanitize(user);
+    console.log({
+        from,
+        type,
+        text,
+        to
+    })
 
-    const validation = messageSchema.validate({ to, text, type });
+    const validation = messageSchema.validate({ to, text, type }, { abortEarly: false });
 
     try {
         const validTo = (to === 'Todos') || await userInParticipants(to);
 
         if (validation.error || !(await userInParticipants(from)) || !validTo) {
-            const error = validation.error ? validation.error.details[0].message : 'Usuário inválido';
-            res.status(422).send({ message: error });
+            const errors = validation.error ? validation.error.details.map(error => error.message) : 'Usuário inválido';
+            res.status(422).send({ message: errors });
             return;
         }
 
@@ -140,7 +152,10 @@ app.post('/messages', async (req, res) => {
 
 app.get('/messages', async (req, res) => {
     const { limit: limitStr } = req.query;
-    const { user } = req.headers;
+    const { user: unUser } = req.headers;
+    const limit = sanitize(limitStr);
+    const user = sanitize(unUser);
+
     const query = {
         $or: [
             {type: 'message'},
@@ -156,9 +171,9 @@ app.get('/messages', async (req, res) => {
             return;
         }
 
-        if (limitStr) {
-            const limit = Number(limitStr);
-            const messages = (await db.collection('messages').find(query).sort({_id: -1}).limit(limit).toArray()).reverse();
+        if (limit) {
+            const limitNum = Number(limitStr);
+            const messages = (await db.collection('messages').find(query).sort({_id: -1}).limit(limitNum).toArray()).reverse();
 
             res.send(messages);
             return;
@@ -176,12 +191,12 @@ app.get('/messages', async (req, res) => {
 app.delete('/messages/:messageId', async (req, res) => {
     const { messageId: unMessageId } = req.params;
     const { user: unUser } = req.headers;
-    const messageId = stripHtml(unMessageId, { trimOnlySpaces: true }).result;
-    const user = stripHtml(unUser, { trimOnlySpaces: true }).result;
+    const messageId = sanitize(unMessageId);
+    const user = sanitize(unUser);
     const query = { _id: new ObjectId(messageId) };
 
     try {
-        const message = (await db.collection('messages').find(query).toArray())[0];
+        const message = (await getData('messages', query))[0];
 
         if (!message) {
             res.status(404).send({ message: 'Mensagem não encontrada' });
@@ -206,13 +221,13 @@ app.put('/messages/:messageId', async (req, res) => {
     const { messageId: unMessageId } = req.params;
     const { to: unTo, text: unText, type: unType } = req.body;
     const { user } = req.headers;
-    const messageId = stripHtml(unMessageId, { trimOnlySpaces: true }).result;
-    const to = stripHtml(unTo, { trimOnlySpaces: true }).result;
-    const text = stripHtml(unText, { trimOnlySpaces: true }).result;
-    const type = stripHtml(unType, { trimOnlySpaces: true }).result;
-    const from = stripHtml(user, { trimOnlySpaces: true }).result;
-    const document = { _id: new ObjectId(messageId) };
-    const validation = messageSchema.validate({ to, text, type });
+    const messageId = sanitize(unMessageId);
+    const to = sanitize(unTo);
+    const text = sanitize(unText);
+    const type = sanitize(unType);
+    const from = sanitize(user);
+    const query = { _id: new ObjectId(messageId) };
+    const validation = messageSchema.validate({ to, text, type }, { abortEarly: false });
     const newDocument = { $set: {
         from,
         to,
@@ -223,11 +238,12 @@ app.put('/messages/:messageId', async (req, res) => {
 
     try {
         const validTo = (to === 'Todos') || await userInParticipants(to);
-        const message = (await db.collection('messages').find(document).toArray())[0];
+        const message = (await getData('messages', query))[0];
+        console.log(message);
 
         if (validation.error || !(await userInParticipants(from)) || !validTo) {
-            const error = validation.error ? validation.error.details[0].message : 'Usuário inválido';
-            res.status(422).send({ message: error });
+            const errors = validation.error ? validation.error.details.map(error => error.message) : 'Usuário inválido';
+            res.status(422).send({ message: errors });
             return;
         }
 
@@ -241,7 +257,7 @@ app.put('/messages/:messageId', async (req, res) => {
             return;
         }
 
-        await db.collection('messages').updateOne(document, newDocument, (err, res) => {
+        await db.collection('messages').updateOne(query, newDocument, (err, res) => {
             if (err) throw err;
             console.log(`${res.matchedCount} document updated.`);
         });
@@ -256,7 +272,7 @@ app.put('/messages/:messageId', async (req, res) => {
 
 app.post('/status', async (req, res) => {
     const { user: unUser } = req.headers;
-    const user = stripHtml(unUser, { trimOnlySpaces: true }).result;
+    const user = sanitize(unUser);
     
     try {
         if (!(await userInParticipants(user))) {
@@ -267,10 +283,7 @@ app.post('/status', async (req, res) => {
         const document = { name: user };
         const newDocument = { $set: { lastStatus: Date.now() } };
 
-        await db.collection('participants').updateOne(document, newDocument, (err, res) => {
-            if (err) throw err;
-            console.log(`${res.matchedCount} document updated.`);
-        });
+        await db.collection('participants').updateOne(document, newDocument);
 
         res.sendStatus(200);
 
