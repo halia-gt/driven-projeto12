@@ -296,7 +296,7 @@ app.post('/status', async (req, res) => {
 setInterval(async () => {
     const tenSecondsAgo = Date.now() - 10000;
     const query = { lastStatus: { $lt: tenSecondsAgo} };
-    
+
     try {
         const participants = await getData('participants');
         const logouts = participants.filter(participant => (participant.lastStatus < tenSecondsAgo));
@@ -318,7 +318,6 @@ setInterval(async () => {
 
     } catch (error) {
         console.error(error);
-        res.sendStatus(500);
     }
 }, 15000);
 
